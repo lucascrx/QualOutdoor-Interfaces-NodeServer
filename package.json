@@ -1,0 +1,11 @@
+{
+	"name":"server",
+	"version":"0.1.0",
+	"dependencies" :{
+		"util":"~0.10.3",
+		"formidable":"~1.0.15",
+		
+	},
+	"author":"lucas croixmarie",
+	"description":"first implementation of a HTTP server for QualOutdoor Project"
+}
