@@ -4,6 +4,7 @@
 	"dependencies" :{
 		"util":"~0.10.3",
 		"formidable":"~1.0.15",
+		"mysql":"~2.4.1"
 		
 	},
 	"author":"lucas croixmarie",
