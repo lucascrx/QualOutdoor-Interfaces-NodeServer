@@ -12,21 +12,21 @@ server = http.createServer(function(req,res){
 		
 		//Uploaded File handler creation : file saving path is specified here
 		var form = new formidable.IncomingForm({ uploadDir: __dirname + '/uploaded' });
-		var filesNames = [];
-		//initialisation des timestamp
-		var startTime;		
-		var storageName;
-		var randomNumber;
-		var stamp;
-		//bornes de l'intervalle de génération du nombre aléatoire
-		var borneSup = 9999;
-		var borneInf = 1000;
+		var filesNames = [];//array where name of recieved files are stored
+		var startTime;//timestamp used for file signature : NOT USED IN THE CURRENT VERSION	
+		var randomNumber;//random number used for file signature	
+		var stamp;//file signature
+		var storageName;//file name created with stamp
+
+		//interval boundaries for random number generation
+		var boundMax = 9999;
+		var boundMin = 1000;
 
 		//When file is detected on incomming formular	
 		form.on('file',function(field,file){
-			//Creation of a file signature : in order to preserve file unicity
+			//Creation of a file signature 
 			startTime = new Date().getTime();
-			randomNumber = Math.floor(Math.random() * borneSup) + borneInf;
+			randomNumber = Math.floor(Math.random() * boundMax) + boundMin;
 			stamp = /*startTime + "_" +*/ randomNumber;
 			storageName = stamp+"_"+file.name ;
 			//File is renamed with a unique name
@@ -46,24 +46,26 @@ server = http.createServer(function(req,res){
 			console.log('upload done'+"\n");
 			res.writeHead(200,{'content-type':'text/plain'});
 			res.end('recieved files: \n\n'+util.inspect(filesNames));
-				
+			//file insertion into data base:	
 			var i;
 			for(i=0;i<filesNames.length;i++){
 				//for every recieved file
 				var shortName = filesNames[i] 
 				console.log("FILE : "+ shortName);
 				var path = form.uploadDir + "/" +shortName
+				
+				//unziping
 				console.log("unzipping file");
 				var extractName = "DIR_"+shortName;
 				var extractPath = form.uploadDir + "/"+extractName;
-				//unzipping them
 				var stream = fs.createReadStream(path).pipe(unzip.Extract({ path:extractPath}));
 				var error_occured = false;
 				stream.on('error',function(err){
 					console.log("error while unzipping");
 					error_occured = true;
 				}); 
-				//when unzipping is correctly done:
+				
+				//when unziping is correctly done:
 				stream.on('close',function(){
 					if(!error_occured){
 						//listing files into extracted archive
@@ -79,27 +81,22 @@ server = http.createServer(function(req,res){
 							database : 'qualoutdoor_db',
 							}
 						);
-						connection.connect();
-							
+						connection.connect();	
 						console.log("connection enabled with data base \n");
 							
-						//looping on every file to load	
+						//looping on every file of the extracted archive to load	
 						(function loop(i,max){
-							
 								var tableName = extractName + "_" + filesIntoZip[i];
 								var pathToFile = form.uploadDir + "/"+extractName+"/"+filesIntoZip[i];
-							
 								console.log("treatment of file " + (i+1) +" over "+ max +" started \n");	
 								
 								//preparation of pending files : changing special characters
-								
 								fs.readFile(pathToFile, 'utf-8', function (err,data){
 									if(err){
 										return console.log(err);
 									}
 									var result_temp = data.replace(/\#(.+)#/g, '');
 									var result = result_temp.split("$").join("///;");
-								
 									fs.writeFile(pathToFile, result, 'utf-8', function (err){
 										if(err){
 											return console.log(err);
@@ -108,23 +105,21 @@ server = http.createServer(function(req,res){
 								});
 								
 								//loading file into a new table:
-								
-								var createQuery = "create table temp_"+tableName+" (LINE INT NOT NULL AUTO_INCREMENT PRIMARY KEY ,LVL INT NOT NULL, REFERENCE BIGINT NOT NULL, LAT REAl, LNG REAL, MEAS_DATA VARCHAR(100) ) ENGINE=MyISAM "
-								
+								var createQuery = "create table temp_"+tableName+" (LINE INT NOT NULL AUTO_INCREMENT PRIMARY KEY ,LVL INT NOT NULL, REFERENCE BIGINT NOT NULL, LAT REAl, LNG REAL, MEAS_DATA VARCHAR(100) ) ENGINE=MyISAM ";
 								connection.query(createQuery, function(err,result){
 									if(err){
 										return console.log(err);
 									}
 								});
-					
 
 								var strQuery = "LOAD DATA LOCAL INFILE '"+pathToFile+"' INTO TABLE temp_"+tableName+" FIELDS TERMINATED BY '/' LINES TERMINATED BY ';' (LVL , REFERENCE , LAT , LNG , MEAS_DATA)";
-								
 								connection.query(strQuery, function(err,rows){
 									if(err){
 										return console.log(err)
 									}
-									else{//when file loading is done, tree must be translated
+									
+									//when file loading is done, tree must be translated
+									else{
 										var callQuery = "CALL proc_tree('temp_"+tableName+"')";
 										connection.query(callQuery, function(err,rows){
 											if(err){
@@ -143,8 +138,7 @@ server = http.createServer(function(req,res){
 													//calling loop for the next file
 													loop(i+1,max);
 												}else{//when every file of the folder is sent
-												
-													//deleting folder and archive:
+													//deleting archive:
 													fs.unlink(path,function (err){
 															if(err){
 																return console.log(err);
@@ -160,15 +154,10 @@ server = http.createServer(function(req,res){
 																fs.rmdirSync(extractPath);
 														}
 													});
-													
-													
-														
-													
 													//ending data base connection
 													console.log("Connection with data base over \n");
 													connection.end();
-													
-												 
+
 												}
 											}
 										});
@@ -184,8 +173,8 @@ server = http.createServer(function(req,res){
 		form.parse(req);
 		
 
-	//si la requete est de type get pour la meme URL:on affiche un formulaire à remplir pour préparer
-	//l'envoi d'une requete de type post
+	//in case of request is http get : a formular is send for being filled and send
+	//through an http post request
 	}else if  (req.url == '/upload' && req.method.toLowerCase() == 'get') {
 		res.writeHead(200, {'content-type':'text/html'});
 		res.end(
@@ -200,9 +189,9 @@ server = http.createServer(function(req,res){
 		'</form>'
 		);
 
-	}else{//si une autre url est demandée 
+	}else{//if another URL is called
 		res.writeHead(404, {'content-type':'text/plain'});
 		res.end('404')
 	}
 });
-server.listen(8080);//on met en route le serveur
+server.listen(8080);//server starts running
